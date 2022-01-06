@@ -1,0 +1,152 @@
+import java.lang.reflect.*;
+import java.util.*;
+import java.io.File;
+import java.io.PrintWriter;
+
+import java.io.IOException;
+import java.io.PrintStream;
+
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Option;
+import org.apache.commons.cli.OptionBuilder;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
+import org.apache.commons.cli.PosixParser;
+import org.deckfour.xes.model.XLog;
+import org.processmining.framework.plugin.Progress;
+import org.processmining.log.csv.CSVFile;
+import org.processmining.log.csv.CSVFileReferenceUnivocityImpl;
+import org.processmining.log.csv.config.CSVConfig;
+import org.processmining.log.csvimport.CSVConversion;
+import org.processmining.log.csvimport.CSVConversion.ConversionResult;
+import org.processmining.log.csvimport.CSVConversion.ProgressListener;
+import org.processmining.log.csvimport.config.CSVConversionConfig;
+import org.processmining.log.csvimport.config.CSVConversionConfig.CSVMapping;
+import org.processmining.log.csvimport.exception.CSVConversionConfigException;
+import org.processmining.log.csvimport.exception.CSVConversionException;
+import org.processmining.log.utils.XUtils;
+import com.google.common.collect.ImmutableList;
+
+
+
+
+class NoOpProgressListenerImpl implements ProgressListener {
+        public void log(String message) {
+        }
+	public Progress getProgress() {
+            return new NoOpProgressImpl();
+        }
+}
+
+class NoOpProgressImpl implements Progress {
+        public void setValue(int value) {
+        }
+        public void setMinimum(int value) {
+        }
+        public void setMaximum(int value) {
+        }
+        public void setIndeterminate(boolean makeIndeterminate) {
+        }
+        public void setCaption(String message) {
+        }
+        public boolean isIndeterminate() {
+            return false;
+        }
+        public boolean isCancelled() {
+            return false;
+        }
+        public void inc() {
+        }
+        public int getValue() {
+            return 0;
+        }
+        public int getMinimum() {
+            return 0;
+        }
+        public int getMaximum() {
+            return 0;
+        }
+        public String getCaption() {
+            return null;
+        }
+        public void cancel() {
+        }
+}
+
+// convert csv file into xes file
+private static XLog convert_csv_xes(File csvFilename) {
+        CSVFileReferenceUnivocityImpl csvFile = new CSVFileReferenceUnivocityImpl(csvFilename.toPath());
+        CSVConfig config = null;
+        
+        try {
+            config = new CSVConfig(csvFile);
+        } catch (IOException ex) {
+            e.printStackTrace();
+        }
+        System.out.println(config.getSeparator());
+        System.out.println(config.getCharset());
+        System.out.println(config.getEscapeChar());
+        try {
+            CSVConversion conversion = new CSVConversion();
+            CSVConversionConfig conversionConfig = new CSVConversionConfig(csvFile, config);
+            conversionConfig.autoDetect();
+            
+            conversionConfig.setCaseColumns(ImmutableList.of("case"));
+            conversionConfig.setEventNameColumns(ImmutableList.of("event"));
+            conversionConfig.setCompletionTimeColumn("timeend");
+            conversionConfig.setStartTimeColumn("timein");
+
+            return (conversion.doConvertCSVToXES(new NoOpProgressListenerImpl(), csvFile, config, conversionConfig)).getResult();
+        } catch (CSVConversionConfigException e) {
+            e.printStackTrace();
+        } catch (CSVConversionException e) {
+            e.printStackTrace();
+        } catch (IOException e1) {
+            e1.printStackTrace();
+        }
+        return null;
+}
+
+
+
+List args = (List) arguments;
+
+try {
+	System.out.println("Open Log File...");
+	file_csv = new File(args.get(0).toString());
+	log = convert_csv_xes(file_csv);
+	
+	System.out.println("Creating settings");
+	org.processmining.plugins.InductiveMiner.mining.MiningParametersIMi parameters = new org.processmining.plugins.InductiveMiner.mining.MiningParametersIMi();
+
+	// second parameter is the noise threshold of the Inductive Miner 
+	if(args.size()==2){
+		parameters.setNoiseThreshold(Float.parseFloat(args.get(1)));
+	}
+
+
+	System.out.println("Calling Inductive Miner");
+	pn_and_marking = mine_petri_net_with_inductive_miner_with_parameters(log, parameters);
+
+	System.out.println("Saving Petri net metrics");
+	metrics = show_petri_net_metrics(pn_and_marking[0]);
+	structuredness = metrics.getMetricValue("Structuredness metric");
+	System.out.println("structuredness" + structuredness + "structuredness");
+
+	numArcs = metrics.getMetricValue("Number of arcs");
+	System.out.println("numArcs" + numArcs + "numArcs");
+
+	numPlaces = metrics.getMetricValue("Number of places");
+	System.out.println("numPlaces" + numPlaces + "numPlaces");
+
+	numTransitions = metrics.getMetricValue("Number of transitions");
+	System.out.println("numTransitions" + numTransitions + "numTransitions");
+
+} catch (Exception e) {e.printStackTrace();}
+
+
+
+System.out.println("done.");
+exit();
